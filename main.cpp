@@ -71,7 +71,7 @@ int main()
                              .count() -
                          currentTime;
 
-        // std::cout << "Time spent: " << timespent << "us" << std::endl;
+        std::cout << "Time spent: " << timespent << "us" << std::endl;
         // Retrieve the current orientation as Euler angles
         auto eulerAngles = fusion.getEulerAngles();
 
