@@ -9,11 +9,31 @@ namespace IMUFusion
     IMUFusion::IMUFusion(FilterType type, float beta)
         : filterType_(type), beta_(beta), q_{1.0f, 0.0f, 0.0f, 0.0f}, lastTimestamp_(0), hasDirectEuler_(false), roll_(0.0f), pitch_(0.0f), yaw_(0.0f)
     {
-        // Initialize Kalman filter matrices
-        P_ = Eigen::MatrixXf::Identity(4, 4) * 0.1f;
-        Q_ = Eigen::MatrixXf::Identity(4, 4) * 0.001f;
-        RAccel_ = Eigen::MatrixXf::Identity(3, 3) * 0.1f;
-        RMag_ = Eigen::MatrixXf::Identity(3, 3) * 0.1f;
+        // Inicializa matriz de covariância P_ (6x6) e Q_ (6x6), RAccel_ (2x2), e state_ (6x1).
+        for (int i = 0; i < 6; i++)
+        {
+            state_[i] = 0.0f; // Estado inicial zero
+            for (int j = 0; j < 6; j++)
+            {
+                P_[i][j] = 0.0f;
+                Q_[i][j] = 0.0f;
+            }
+        }
+        // Covariância inicial P_ como identidade * 0.1f
+        for (int i = 0; i < 6; i++)
+        {
+            P_[i][i] = 0.1f;
+        }
+        // Q_ como identidade * 0.001f
+        for (int i = 0; i < 6; i++)
+        {
+            Q_[i][i] = 0.001f;
+        }
+        // RAccel_ (2x2) assume ruído do acelerómetro p/ roll e pitch
+        RAccel_[0][0] = 0.1f;
+        RAccel_[0][1] = 0.0f;
+        RAccel_[1][0] = 0.0f;
+        RAccel_[1][1] = 0.1f;
     }
 
     void IMUFusion::update(const IMUData &data, uint64_t timestamp, bool hasMagnetometer)
@@ -30,7 +50,7 @@ namespace IMUFusion
         }
         else if (filterType_ == FilterType::KALMAN)
         {
-            hasDirectEuler_ = false;
+            hasDirectEuler_ = true;
             updateKalman(data, dt, hasMagnetometer);
         }
         else
@@ -84,85 +104,248 @@ namespace IMUFusion
 
     void IMUFusion::updateKalman(const IMUData &data, float dt, bool hasMagnetometer)
     {
-        // State vector: [q_w, q_x, q_y, q_z]
-        Eigen::Vector4f x(q_[0], q_[1], q_[2], q_[3]);
+        // Inputs:
+        float ax = data.accelerometer[0];
+        float ay = data.accelerometer[1];
+        float az = data.accelerometer[2];
 
-        // 1. State Prediction using Gyroscope
-        Eigen::Vector4f gyroDelta;
         float gx = data.gyroscope[0];
         float gy = data.gyroscope[1];
         float gz = data.gyroscope[2];
 
-        // Compute quaternion derivative based on gyroscope data
-        Eigen::Matrix4f F;
-        F << 0.0f, -gx, -gy, -gz,
-            gx, 0.0f, gz, -gy,
-            gy, -gz, 0.0f, gx,
-            gz, gy, -gx, 0.0f;
-        F *= 0.5f; // Derivative factor for quaternion
-
-        // Predict state
-        x += F * x * dt;
-
-        // Predict covariance
-        P_ = P_ + Q_ * dt;
-
-        // Normalize quaternion
-        x.normalize();
-
-        // 2. Accelerometer Measurement Update
-        Eigen::Vector3f accel(data.accelerometer[0], data.accelerometer[1], data.accelerometer[2]);
-        accel.normalize();
-
-        // Gravity vector in quaternion terms
-        Eigen::Vector3f hAccel;
-        hAccel << 2.0f * (x(1) * x(3) - x(0) * x(2)),
-            2.0f * (x(2) * x(3) + x(0) * x(1)),
-            x(0) * x(0) - x(1) * x(1) - x(2) * x(2) + x(3) * x(3);
-
-        // Jacobian for accelerometer
-        Eigen::MatrixXf HAccel(3, 4);
-        HAccel << -2 * x(2), 2 * x(3), -2 * x(0), 2 * x(1),
-            2 * x(1), 2 * x(0), 2 * x(3), 2 * x(2),
-            2 * x(0), -2 * x(1), -2 * x(2), 2 * x(3);
-
-        // Update step with accelerometer
-        Eigen::MatrixXf KAccel = P_ * HAccel.transpose() * (HAccel * P_ * HAccel.transpose() + RAccel_).inverse();
-        x += KAccel * (accel - hAccel);
-        P_ = (Eigen::MatrixXf::Identity(4, 4) - KAccel * HAccel) * P_;
-
-        // 3. Magnetometer Update (if available)
-        if (hasMagnetometer)
+        // ---- 1) PREDICT ----
+        // Matrizes F e P preditas
+        // Vamos criar a matriz F como identidade + dt nas posições adequadas.
+        float F[6][6];
+        // Inicializar F como identidade
+        for (int i = 0; i < 6; i++)
         {
-            Eigen::Vector3f mag(data.magnetometer[0], data.magnetometer[1], data.magnetometer[2]);
-            mag.normalize();
+            for (int j = 0; j < 6; j++)
+            {
+                F[i][j] = (i == j) ? 1.0f : 0.0f;
+            }
+        }
+        // roll -> + roll_rate * dt
+        F[0][3] = dt;
+        // pitch -> + pitch_rate * dt
+        F[1][4] = dt;
+        // yaw -> + yaw_rate * dt
+        F[2][5] = dt;
 
-            // Magnetic field vector in quaternion terms
-            Eigen::Vector3f hMag;
-            hMag << 2.0f * (x(1) * x(3) - x(0) * x(2)),
-                2.0f * (x(2) * x(3) + x(0) * x(1)),
-                x(0) * x(0) - x(1) * x(1) - x(2) * x(2) + x(3) * x(3);
+        // Precisamos primeiro transformar gx, gy, gz do body frame para o inertial (roll_, pitch_ do estado atual)
+        // Vamos supor que a estimativa atual de roll e pitch é state_[0] e state_[1].
+        float roll_est = state_[0];
+        float pitch_est = state_[1];
 
-            // Jacobian for magnetometer
-            Eigen::MatrixXf HMag(3, 4);
-            HMag << -2 * x(2), 2 * x(3), -2 * x(0), 2 * x(1),
-                2 * x(1), 2 * x(0), 2 * x(3), 2 * x(2),
-                2 * x(0), -2 * x(1), -2 * x(2), 2 * x(3);
+        float T11 = 1.0f;
+        float T12 = std::sin(roll_est) * std::tan(pitch_est);
+        float T13 = std::cos(roll_est) * std::tan(pitch_est);
+        float T21 = 0.0f;
+        float T22 = std::cos(roll_est);
+        float T23 = -std::sin(roll_est);
+        float T31 = 0.0f;
+        float T32 = std::sin(roll_est) / std::cos(pitch_est);
+        float T33 = std::cos(roll_est) / std::cos(pitch_est);
 
-            // Update step with magnetometer
-            Eigen::MatrixXf KMag = P_ * HMag.transpose() * (HMag * P_ * HMag.transpose() + RMag_).inverse();
-            x += KMag * (mag - hMag);
-            P_ = (Eigen::MatrixXf::Identity(4, 4) - KMag * HMag) * P_;
+        float roll_dot = T11 * gx + T12 * gy + T13 * gz;
+        float pitch_dot = T21 * gx + T22 * gy + T23 * gz;
+        float yaw_dot = T31 * gx + T32 * gy + T33 * gz;
+
+        // Vetor xPredict
+        float xPredict[6];
+        for (int i = 0; i < 6; i++)
+        {
+            xPredict[i] = state_[i];
+        }
+        // roll, pitch, yaw
+        xPredict[0] += state_[3] * dt; // roll += roll_rate*dt
+        xPredict[1] += state_[4] * dt; // pitch += pitch_rate*dt
+        xPredict[2] += state_[5] * dt; // yaw += yaw_rate*dt
+
+        // roll_rate, pitch_rate, yaw_rate passam a ser roll_dot, pitch_dot, yaw_dot
+        xPredict[3] = roll_dot;
+        xPredict[4] = pitch_dot;
+        xPredict[5] = yaw_dot;
+
+        // P = F * P * F^T + Q
+        float tempFP[6][6];
+        matMul66(F, P_, tempFP); // tempFP = F * P
+        float F_T[6][6];
+        matTrans66(F, F_T); // F^T
+        float newP[6][6];
+        // newP = tempFP * F^T
+        float temp[6][6];
+        matMul66(tempFP, F_T, temp);
+
+        // Adicionar Q_
+        matAdd66(temp, Q_, newP);
+
+        // ---- 2) UPDATE ----
+        // Correção via acelerómetro: medimos roll, pitch
+
+        float roll_meas = std::atan2(ay, az);
+        float pitch_meas = std::atan2(-ax, std::sqrt(ay * ay + az * az));
+
+        float z[2] = {roll_meas, pitch_meas}; // Medição
+
+        // h(x) = [roll, pitch] => [xPredict[0], xPredict[1]]
+        float h[2] = {xPredict[0], xPredict[1]};
+
+        // Inovação y = z - h
+        float y[2] = {z[0] - h[0], z[1] - h[1]};
+
+        // Matriz H(2x6): extrai roll e pitch do estado
+        // H = [[1,0,0,0,0,0],
+        //      [0,1,0,0,0,0]]
+        float H[2][6];
+        for (int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                H[i][j] = 0.0f;
+            }
+        }
+        H[0][0] = 1.0f; // roll
+        H[1][1] = 1.0f; // pitch
+
+        // S = H * newP * H^T + RAccel
+        float HP[2][6];
+        for (int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 6; k++)
+                {
+                    soma += H[i][k] * newP[k][j];
+                }
+                HP[i][j] = soma;
+            }
+        }
+        float S[2][2];
+        for (int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 6; k++)
+                {
+                    // H^T é H transposta => H[j][k] = H^T[k][j]
+                    soma += HP[i][k] * H[j][k];
+                }
+                S[i][j] = soma + RAccel_[i][j];
+            }
         }
 
-        // Normalize quaternion
-        x.normalize();
+        // Inverter S (2x2)
+        float S_inv[2][2];
+        if (!invert2x2(S, S_inv))
+        {
+            // Se não for invertível, abortar
+            // mas normalmente não deve acontecer
+            for (int i = 0; i < 6; i++)
+            {
+                state_[i] = xPredict[i];
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                for (int j = 0; j < 6; j++)
+                {
+                    P_[i][j] = newP[i][j];
+                }
+            }
+            return;
+        }
 
-        // Update quaternion
-        q_[0] = x(0);
-        q_[1] = x(1);
-        q_[2] = x(2);
-        q_[3] = x(3);
+        // K = newP * H^T * S_inv => dimension(6x2)
+        // primeiro newP * H^T
+        float PHt[6][2];
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 6; k++)
+                {
+                    // H^T => H[j][k]
+                    soma += newP[i][k] * H[j][k];
+                }
+                PHt[i][j] = soma;
+            }
+        }
+        float K[6][2];
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 2; k++)
+                {
+                    soma += PHt[i][k] * S_inv[k][j];
+                }
+                K[i][j] = soma;
+            }
+        }
+
+        // Atualizar estado: x = xPredict + K*y
+        float xUpdated[6];
+        for (int i = 0; i < 6; i++)
+        {
+            float soma = xPredict[i];
+            for (int j = 0; j < 2; j++)
+            {
+                soma += K[i][j] * y[j];
+            }
+            xUpdated[i] = soma;
+        }
+
+        // P = (I - K*H)*newP
+        float KH[6][6];
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 2; k++)
+                {
+                    soma += K[i][k] * H[k][j];
+                }
+                KH[i][j] = soma;
+            }
+        }
+
+        float IminusKH[6][6];
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                if (i == j)
+                    IminusKH[i][j] = 1.0f - KH[i][j];
+                else
+                    IminusKH[i][j] = 0.0f - KH[i][j];
+            }
+        }
+
+        float PUpdated[6][6];
+        matMul66(IminusKH, newP, PUpdated);
+
+        // Guardar estado e covariância
+        for (int i = 0; i < 6; i++)
+        {
+            state_[i] = xUpdated[i];
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                P_[i][j] = PUpdated[i][j];
+            }
+        }
+
+        // Por fim, atualizamos roll_, pitch_, yaw_ (para quem quiser ler via getEulerAngles se hasDirectEuler_ = false)
+        roll_ = state_[0];
+        pitch_ = state_[1];
+        yaw_ = state_[2];
     }
     void IMUFusion::updateMadgwick(const IMUData &data, float dt, bool hasMagnetometer)
     {
@@ -326,22 +509,99 @@ namespace IMUFusion
 
     void IMUFusion::setProcessNoise(float q)
     {
-        Q_ = Eigen::MatrixXf::Identity(4, 4) * q;
+        // Ajusta Q_ (6x6)
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                if (i == j)
+                    Q_[i][j] = q;
+                else
+                    Q_[i][j] = 0.0f;
+            }
+        }
     }
 
     void IMUFusion::setMeasurementNoise(float rAccel, float rMag)
     {
-        RAccel_ = Eigen::MatrixXf::Identity(3, 3) * rAccel;
-        RMag_ = Eigen::MatrixXf::Identity(3, 3) * rMag;
+        // RAccel_ (2x2)
+        RAccel_[0][0] = rAccel;
+        RAccel_[1][1] = rAccel;
+        RAccel_[0][1] = 0.0f;
+        RAccel_[1][0] = 0.0f;
+        // magnetómetro não está implementado neste Kalman simplificado
+        // mas poderíamos ter RMag_ e etc.
+        (void)rMag; // ignora por ora
     }
 
-    void IMUFusion::normalizeQuaternion()
+    // ------------------- Funções auxiliares ---------------------
+
+    // Multiplicação C = A * B (6x6)
+    void IMUFusion::matMul66(const float A[6][6], const float B[6][6], float C[6][6])
     {
-        float norm = std::sqrt(q_[0] * q_[0] + q_[1] * q_[1] +
-                               q_[2] * q_[2] + q_[3] * q_[3]);
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
         {
-            q_[i] /= norm;
+            for (int j = 0; j < 6; j++)
+            {
+                float soma = 0.0f;
+                for (int k = 0; k < 6; k++)
+                {
+                    soma += A[i][k] * B[k][j];
+                }
+                C[i][j] = soma;
+            }
         }
+    }
+
+    // Soma C = A + B (6x6)
+    void IMUFusion::matAdd66(const float A[6][6], const float B[6][6], float C[6][6])
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                C[i][j] = A[i][j] + B[i][j];
+            }
+        }
+    }
+
+    // Transposta At = A^T (6x6)
+    void IMUFusion::matTrans66(const float A[6][6], float At[6][6])
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                At[j][i] = A[i][j];
+            }
+        }
+    }
+
+    // Multiplicação out = A * v (6x6 * 6x1)
+    void IMUFusion::matMulVec6(const float A[6][6], const float v[6], float out[6])
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            float soma = 0.0f;
+            for (int j = 0; j < 6; j++)
+            {
+                soma += A[i][j] * v[j];
+            }
+            out[i] = soma;
+        }
+    }
+
+    // Inverter 2x2
+    bool IMUFusion::invert2x2(const float M[2][2], float Minv[2][2])
+    {
+        float det = M[0][0] * M[1][1] - M[0][1] * M[1][0];
+        if (std::fabs(det) < 1e-9f)
+            return false;
+        float invDet = 1.0f / det;
+        Minv[0][0] = M[1][1] * invDet;
+        Minv[0][1] = -M[0][1] * invDet;
+        Minv[1][0] = -M[1][0] * invDet;
+        Minv[1][1] = M[0][0] * invDet;
+        return true;
     }
 } // namespace IMUFusion

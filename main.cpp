@@ -8,7 +8,7 @@
 int main()
 {
     // Initialize with Kalman filter
-    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::COMPLEMENTARY);
+    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::KALMAN);
 
     // Set Kalman filter parameters
     fusion.setProcessNoise(0.001f);

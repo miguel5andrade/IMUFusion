@@ -2,7 +2,6 @@
 #define IMUFUSION_H
 
 #include <array>
-#include <Eigen/Dense>
 
 namespace IMUFusion
 {
@@ -37,21 +36,25 @@ namespace IMUFusion
 
         void setBeta(float beta);
         void setProcessNoise(float q);
-        void setMeasurementNoise(float r, float m);
+        void setMeasurementNoise(float rAccel, float rMag);
 
     private:
         FilterType filterType_;
         float beta_;             // Madgwick algorithm gain
         std::array<float, 4> q_; // Quaternion
-        uint64_t lastTimestamp_;
+        float lastTimestamp_;
         bool hasDirectEuler_;
         float roll_, pitch_, yaw_;
 
         // Kalman filter variables
-        Eigen::MatrixXf P_;      // State covariance
-        Eigen::MatrixXf Q_;      // Process noise
-        Eigen::MatrixXf RAccel_; // Measurement noise
-        Eigen::MatrixXf RMag_;   // Measurement noise
+        // ADD: Matriz de covariância do estado (6x6)
+        float P_[6][6];
+        // ADD: Matriz de ruído de processo (6x6)
+        float Q_[6][6];
+        // ADD: Matriz de ruído de medição do acelerómetro (2x2) - pois só corrigimos roll e pitch
+        float RAccel_[2][2];
+        // ADD: Vetor de estado (6x1) [roll, pitch, yaw, roll_rate, pitch_rate, yaw_rate]
+        float state_[6];
 
         // Filter update methods
         void updateMadgwick(const IMUData &data, float dt, bool hasMagnetometer);
@@ -61,7 +64,12 @@ namespace IMUFusion
         // Helper functions
         float invSqrt(float x) const; // Fast inverse square root
         void normalize(std::array<float, 3> &v) const;
-        void normalizeQuaternion();
+
+        void matMul66(const float A[6][6], const float B[6][6], float C[6][6]);
+        void matAdd66(const float A[6][6], const float B[6][6], float C[6][6]);
+        void matTrans66(const float A[6][6], float At[6][6]);
+        void matMulVec6(const float A[6][6], const float v[6], float out[6]);
+        bool invert2x2(const float M[2][2], float Minv[2][2]);
     };
 
 }
