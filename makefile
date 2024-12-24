@@ -1,12 +1,7 @@
 # Compiler and flags
 CXX = g++
-# Add Eigen include path - adjust this path based on your system:
-# For Windows (typical vcpkg location):
-EIGEN_PATH = /usr/include/eigen3
-# For Linux: EIGEN_PATH = /usr/include/eigen3
 
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -g -I$(EIGEN_PATH)
-
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -g 
 # Target executable
 TARGET = imu_fusion
 

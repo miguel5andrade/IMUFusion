@@ -25,10 +25,6 @@ namespace IMUFusion
         // Update with new IMU data and current timestamp (in milliseconds)
         void update(IMUData &data, float timestamp, bool hasMagnetometer = false);
 
-        void lowPassFilter(IMUData &data, float accelerometer_alpha = 0.1f, float gyro_alpha = 0.01f, float magnetometer_alpha = 0.1f);
-
-        void medianFilter(IMUData &data, int windowSize = 5);
-
         // Get orientation as a quaternion
         void getQuaternion(float q[4]) const;
 
@@ -52,9 +48,6 @@ namespace IMUFusion
         float Q_[6][6];
         float RAccel_[2][2];
         float state_[6];
-        float rMag_;
-
-        IMUData previousData;
 
         // Filter update methods
         void updateMadgwick(IMUData &data, float dt, bool hasMagnetometer);

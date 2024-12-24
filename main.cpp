@@ -11,12 +11,12 @@ int main()
     IMUFusion::IMUFusion fusion(IMUFusion::FilterType::KALMAN);
 
     // Set Kalman filter parameters
-    fusion.setProcessNoise(0.001f);
-    fusion.setMeasurementNoise(0.1f, 0.1f);
+    fusion.setProcessNoise(0.01f);
+    fusion.setMeasurementNoise(0.1f, 0.2f);
 
-    fusion.setBeta(0.1f); // Set the algorithm gain
+    fusion.setBeta(0.1f); // Set the algorithm gain, used in Madgwick filter
     // Open the data file
-    std::ifstream file("LAB1_3.txt");
+    std::ifstream file("dados/teste_estatico_com_video_2min_de_movimento.txt");
     if (!file.is_open())
     {
         std::cerr << "Error opening file." << std::endl;
@@ -27,6 +27,7 @@ int main()
     float timestamp;
     float accel_x_mG, accel_y_mG, accel_z_mG;
     float gyro_x_dps, gyro_y_dps, gyro_z_dps;
+    float mag_x, mag_y, mag_z;
 
     // Constants for unit conversion
     const float G_TO_MPS2 = 9.80665f / 1000.0f; // mG to m/s²
@@ -38,7 +39,7 @@ int main()
         std::istringstream iss(line);
 
         // Parse data from the line
-        if (!(iss >> timestamp >> accel_x_mG >> accel_y_mG >> accel_z_mG >> gyro_x_dps >> gyro_y_dps >> gyro_z_dps))
+        if (!(iss >> timestamp >> accel_x_mG >> accel_y_mG >> accel_z_mG >> gyro_x_dps >> gyro_y_dps >> gyro_z_dps >> mag_x >> mag_y >> mag_z))
         {
             std::cerr << "Error parsing line: " << line << std::endl;
             continue;
@@ -56,24 +57,46 @@ int main()
 
         // Create IMUData structure
         IMUFusion::IMUData imuData;
-        imuData.accelerometer = {accel_x, accel_y, accel_z};
-        imuData.gyroscope = {gyro_x, gyro_y, gyro_z};
+        imuData.accelerometer[0] = accel_x;
+        imuData.accelerometer[1] = accel_y;
+        imuData.accelerometer[2] = accel_z;
+        imuData.gyroscope[0] = gyro_x;
+        imuData.gyroscope[1] = gyro_y;
+        imuData.gyroscope[2] = gyro_z;
+        imuData.magnetometer[0] = mag_x;
+        imuData.magnetometer[1] = mag_y;
+        imuData.magnetometer[2] = mag_z;
 
         // Update the sensor fusion filter
-        auto currentTime = std::chrono::duration_cast<std::chrono::microseconds>(
-                               std::chrono::system_clock::now().time_since_epoch())
-                               .count();
+        float currentTime = std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+        fusion.lowPassFilter(imuData, 0.5f, 0.5f, 0.5f);
 
-        fusion.update(imuData, timestamp, false);
+        /*
+        std::ofstream outFile("filtered_data.txt", std::ios::app);
+        outFile << timestamp << " "
+                << imuData.accelerometer[0] / G_TO_MPS2 << " "
+                << imuData.accelerometer[1] / G_TO_MPS2 << " "
+                << imuData.accelerometer[2] / G_TO_MPS2 << " "
+                << imuData.gyroscope[0] / DEG_TO_RAD << " "
+                << imuData.gyroscope[1] / DEG_TO_RAD << " "
+                << imuData.gyroscope[2] / DEG_TO_RAD << " "
+                << imuData.magnetometer[0] << " "
+                << imuData.magnetometer[1] << " "
+                << imuData.magnetometer[2] << "\n";
+        */
+        fusion.update(imuData, timestamp, true);
 
-        auto timespent = std::chrono::duration_cast<std::chrono::microseconds>(
-                             std::chrono::system_clock::now().time_since_epoch())
-                             .count() -
-                         currentTime;
+        float timespent = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count() -
+                          currentTime;
 
         std::cout << "Time spent: " << timespent << "us" << std::endl;
         // Retrieve the current orientation as Euler angles
-        auto eulerAngles = fusion.getEulerAngles();
+        float eulerAngles[3];
+        fusion.getEulerAngles(eulerAngles);
 
         // Print the orientation (roll, pitch, yaw) in degrees
         std::cout << "Timestamp: " << timestamp << " us | "
