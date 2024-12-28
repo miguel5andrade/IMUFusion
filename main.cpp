@@ -14,7 +14,6 @@ int main()
     fusion.setProcessNoise(0.01f);
     fusion.setMeasurementNoise(0.1f, 0.2f);
 
-    fusion.setBeta(0.1f); // Set the algorithm gain, used in Madgwick filter
     // Open the data file
     std::ifstream file("dados/teste_estatico_com_video_2min_de_movimento.txt");
     if (!file.is_open())
@@ -32,6 +31,11 @@ int main()
     // Constants for unit conversion
     const float G_TO_MPS2 = 9.80665f / 1000.0f; // mG to m/s²
     const float DEG_TO_RAD = M_PI / 180.0f;     // Degrees/sec to radians/sec
+
+    // Create IMUData structure
+    IMUFusion::IMUData imuData;
+
+    fusion.setWindowSize(7);
 
     // Read the file line by line
     while (std::getline(file, line))
@@ -55,25 +59,27 @@ int main()
         float gyro_y = gyro_y_dps * DEG_TO_RAD;
         float gyro_z = gyro_z_dps * DEG_TO_RAD;
 
-        // Create IMUData structure
-        IMUFusion::IMUData imuData;
         imuData.accelerometer[0] = accel_x;
         imuData.accelerometer[1] = accel_y;
         imuData.accelerometer[2] = accel_z;
         imuData.gyroscope[0] = gyro_x;
         imuData.gyroscope[1] = gyro_y;
         imuData.gyroscope[2] = gyro_z;
-        imuData.magnetometer[0] = mag_x;
-        imuData.magnetometer[1] = mag_y;
-        imuData.magnetometer[2] = mag_z;
+        // Magnemeter has a different coordinate system, map it to the same as the accelerometer and gyroscope
+        imuData.magnetometer[0] = mag_y;
+        imuData.magnetometer[1] = mag_x;
+        imuData.magnetometer[2] = -mag_z;
 
         // Update the sensor fusion filter
+
+        /*
         float currentTime = std::chrono::duration_cast<std::chrono::microseconds>(
                                 std::chrono::system_clock::now().time_since_epoch())
                                 .count();
-        fusion.lowPassFilter(imuData, 0.5f, 0.5f, 0.5f);
+        */
+        // fusion.lowPassFilter(imuData, 0.5f, 0.5f, 0.5f);
+        fusion.movingAverageFilter(imuData);
 
-        /*
         std::ofstream outFile("filtered_data.txt", std::ios::app);
         outFile << timestamp << " "
                 << imuData.accelerometer[0] / G_TO_MPS2 << " "
@@ -85,18 +91,38 @@ int main()
                 << imuData.magnetometer[0] << " "
                 << imuData.magnetometer[1] << " "
                 << imuData.magnetometer[2] << "\n";
-        */
+
         fusion.update(imuData, timestamp, true);
 
+        /*
         float timespent = std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::system_clock::now().time_since_epoch())
                               .count() -
                           currentTime;
 
-        std::cout << "Time spent: " << timespent << "us" << std::endl;
+        std::cout << "Time spent: " << timespent << "us" << std::endl;*/
         // Retrieve the current orientation as Euler angles
         float eulerAngles[3];
         fusion.getEulerAngles(eulerAngles);
+
+        // Open the output file in append
+        /*
+       std::ofstream outFile("orientation_data.txt", std::ios::app);
+       if (!outFile.is_open())
+       {
+           std::cerr << "Error opening output file." << std::endl;
+           return 1;
+       }
+
+       // Write the timestamp and Euler angles to the file
+
+       outFile << timestamp << " "
+               << eulerAngles[0] * 180.0 / M_PI << " "
+               << eulerAngles[1] * 180.0 / M_PI << " "
+               << eulerAngles[2] * 180.0 / M_PI << "\n";
+
+       // Close the output file
+       outFile.close();*/
 
         // Print the orientation (roll, pitch, yaw) in degrees
         std::cout << "Timestamp: " << timestamp << " us | "

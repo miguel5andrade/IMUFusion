@@ -16,55 +16,55 @@ void setup() {
   // Configura o filtro Kalman apenas uma vez
   fusion.setProcessNoise(0.001f);
   fusion.setMeasurementNoise(0.1f, 0.1f);
+  fusion.setAlpha(0.95f);
+  fusion.setWindowSize(3);
 
-  fusion.setBeta(0.1f);
 }
 
 void loop() {
   static int counter = 0; // Usa uma variável estática para contar as iterações
 
-  if (counter < 1000) {
-    float accel_x = 100 * G_TO_MPS2;
-    float accel_y = 0 * G_TO_MPS2;
-    float accel_z = 0 * G_TO_MPS2;
-
-    // Convert gyroscope data to radians/sec
-    float gyro_x = 0 * DEG_TO_RAD;
-    float gyro_y = 0.552 * DEG_TO_RAD;
-    float gyro_z = 0.5325 * DEG_TO_RAD;
+  if (counter < 10000) {
     float timestamp = 6287908.0 + counter;
 
     IMUFusion::IMUData imuData;
 
-    imuData.accelerometer[0] = accel_x;
-    imuData.accelerometer[1] = accel_y;
-    imuData.accelerometer[2] = accel_z;
-    imuData.gyroscope[0] = gyro_x;
-    imuData.gyroscope[1] = gyro_y;
-    imuData.gyroscope[2] = gyro_z;
+    imuData.accelerometer[0] = 1;
+    imuData.accelerometer[1] = 2;
+    imuData.accelerometer[2] = 3;
+    imuData.gyroscope[0] = 4;
+    imuData.gyroscope[1] = 5;
+    imuData.gyroscope[2] = 6;
+
+    imuData.magnetometer[0] = 7;
+    imuData.magnetometer[1] = 8;
+    imuData.magnetometer[2] = 9;
 
     float timeBefore = millis();
 
-    fusion.update(imuData, timestamp);
+    fusion.movingAverageFilter(imuData);
 
+    fusion.update(imuData, timestamp);
+    float angles[3];
+    fusion.getEulerAngles(angles);
     float timeElapsed = millis() - timeBefore;
     meanTime = meanTime + timeElapsed;
-    Serial.print("Iteracao n: ");
-    Serial.print(counter);
-    Serial.print(" | tempo: ");
-    Serial.print(timeElapsed);
-    Serial.print(" ms");
-    Serial.println();
+    //Serial.print("Iteracao n: ");
+    //Serial.print(counter);
+    //Serial.print(" | tempo: ");
+    //Serial.print(timeElapsed);
+    //Serial.print(" ms");
+    //Serial.println();
 
     
     counter++;
   } else {
     Serial.println("Fim da execucao.");
 
-    meanTime = meanTime / 1000;
+    meanTime = meanTime / 10000;
     Serial.println("Média de tempo: ");
     Serial.print(meanTime);
     Serial.print(" ms");
-    while (1); // Para o loop ao atingir 1000 iterações
+    while (1); // Para o loop ao atingir 10000 iterações
   }
 }

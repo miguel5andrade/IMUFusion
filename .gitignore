@@ -1,0 +1,7 @@
+.venv
+rob.ipynb
+*.o
+imu_fusion
+*.m
+timer
+dados
