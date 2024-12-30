@@ -1,6 +1,5 @@
 #include "IMUFusion.h"
 
-
 namespace IMUFusion
 {
 
@@ -77,7 +76,7 @@ namespace IMUFusion
         if (dt <= 0.0f)
             return;
 
-        if (filterType_ == FilterType::KALMAN)
+        if (filterType_ == FilterType::EKF)
         {
             updateKalman(data, dt, hasMagnetometer);
         }

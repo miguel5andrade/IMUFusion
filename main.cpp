@@ -8,15 +8,14 @@
 int main()
 {
     // Initialize with Kalman filter
-    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::KALMAN);
+    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::EKF);
 
-    // Set Kalman filter parameters
-    fusion.setProcessNoise(0.01f);
-    fusion.setMeasurementNoise(0.1f, 0.2f);
+    
 
     // Open the data file
     std::ifstream file("dados/teste_estatico_com_video_2min_de_movimento.txt");
     if (!file.is_open())
+
     {
         std::cerr << "Error opening file." << std::endl;
         return 1;
@@ -35,7 +34,7 @@ int main()
     // Create IMUData structure
     IMUFusion::IMUData imuData;
 
-    fusion.setWindowSize(7);
+    fusion.setWindowSize(21);
 
     // Read the file line by line
     while (std::getline(file, line))
@@ -77,7 +76,7 @@ int main()
                                 std::chrono::system_clock::now().time_since_epoch())
                                 .count();
         */
-        // fusion.lowPassFilter(imuData, 0.5f, 0.5f, 0.5f);
+        fusion.lowPassFilter(imuData, 0.5f, 0.5f, 0.5f);
         fusion.movingAverageFilter(imuData);
 
         std::ofstream outFile("filtered_data.txt", std::ios::app);
@@ -106,23 +105,23 @@ int main()
         fusion.getEulerAngles(eulerAngles);
 
         // Open the output file in append
-        /*
-       std::ofstream outFile("orientation_data.txt", std::ios::app);
-       if (!outFile.is_open())
-       {
-           std::cerr << "Error opening output file." << std::endl;
-           return 1;
-       }
 
-       // Write the timestamp and Euler angles to the file
+        std::ofstream outFile2("orientation_data.txt", std::ios::app);
+        if (!outFile2.is_open())
+        {
+            std::cerr << "Error opening output file." << std::endl;
+            return 1;
+        }
 
-       outFile << timestamp << " "
-               << eulerAngles[0] * 180.0 / M_PI << " "
-               << eulerAngles[1] * 180.0 / M_PI << " "
-               << eulerAngles[2] * 180.0 / M_PI << "\n";
+        // Write the timestamp and Euler angles to the file
 
-       // Close the output file
-       outFile.close();*/
+        outFile2 << timestamp << " "
+                 << eulerAngles[0] * 180.0 / M_PI << " "
+                 << eulerAngles[1] * 180.0 / M_PI << " "
+                 << eulerAngles[2] * 180.0 / M_PI << "\n";
+
+        // Close the output file
+        outFile2.close();
 
         // Print the orientation (roll, pitch, yaw) in degrees
         std::cout << "Timestamp: " << timestamp << " us | "

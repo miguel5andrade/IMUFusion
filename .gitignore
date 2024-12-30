@@ -5,3 +5,6 @@ imu_fusion
 *.m
 timer
 dados
+main.cpp
+makefile
+*.txt

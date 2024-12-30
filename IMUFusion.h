@@ -10,7 +10,7 @@ namespace IMUFusion
      */
     enum class FilterType
     {
-        KALMAN,       ///< Extended Kalman filter for a more precise orientation estimation
+        EKF,          ///< Extended Kalman filter for a more precise orientation estimation
         COMPLEMENTARY ///< Complementary filter for a lightweight orientation estimation
     };
 
@@ -32,9 +32,9 @@ namespace IMUFusion
     public:
         /**
          * @brief Constructor to initialize the filter type.
-         * @param type Filter type (Kalman or Complementary).
+         * @param type Filter type (EKF or Complementary).
          */
-        IMUFusion(FilterType type = FilterType::KALMAN);
+        IMUFusion(FilterType type = FilterType::EKF);
 
         /**
          * @brief Destructor, frees allocated memory.

@@ -8,7 +8,7 @@ namespace IMUFusion
      */
     enum class FilterType
     {
-        KALMAN,       ///< Extended Kalman filter for a more precise orientation estimation
+        EKF,          ///< Extended Kalman filter for a more precise orientation estimation
         COMPLEMENTARY ///< Complementary filter for a lightweight orientation estimation
     };
 
