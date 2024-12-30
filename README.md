@@ -1,8 +1,15 @@
 # IMUFusion
 
-IMUFusion is an API that performs sensor fusion on IMU data to get orientation anles Roll(rotation around X), Pitch(rotation around Y) and Yaw(rotation around Z), it uses the convention XYZ for fixed axis and ZYX for the euler angles.
+IMUFusion is an C++ API that performs sensor fusion on IMU data to get orientation anles Roll(rotation around X), Pitch(rotation around Y) and Yaw(rotation around Z), it uses the convention XYZ for fixed axis and ZYX for the euler angles.
 IMUFusion has been developed to ensure lightweightness and efficiency, it only uses the standard C/C++ libraries, with no dependencies.
 The user can choose between 2 sensor fusion algorithms, the Complementary filter, and the Extended Kalman Filter.
+
+## How to add to your project
+
+`git clone https://github.com/miguel5andrade/IMUFusion`
+Or just add the IMUFusion.h and IMUFusion.cpp files to your project
+Include the library in your code:
+`#include "IMUFusion.h"` 
 
 ## The frame assignment is important, the api expects that the gyroscope, accelerometer and magnetometer share the same frame assignment
 
@@ -72,7 +79,7 @@ int main()
 
     // Set Kalman filter parameters
     fusion.setProcessNoise(0.01f);            //Noise of the gyroscope
-    fusion.setMeasurementNoise(0.1f, 0.2f);   //Noise of the accelerometer and magnetometer 
+    fusion.setMeasurementNoise(0.1f, 0.2f);   //Noise of the accelerometer and magnetometer
 
     // Create IMUData structure
     IMUFusion::IMUData imuData;
