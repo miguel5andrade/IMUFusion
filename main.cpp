@@ -8,9 +8,7 @@
 int main()
 {
     // Initialize with Kalman filter
-    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::EKF);
-
-    
+    IMUFusion::IMUFusion fusion(IMUFusion::FilterType::COMPLEMENTARY);
 
     // Open the data file
     std::ifstream file("dados/teste_estatico_com_video_2min_de_movimento.txt");
@@ -35,6 +33,7 @@ int main()
     IMUFusion::IMUData imuData;
 
     fusion.setWindowSize(21);
+    fusion.setAlpha(0.90f);
 
     // Read the file line by line
     while (std::getline(file, line))
@@ -91,7 +90,7 @@ int main()
                 << imuData.magnetometer[1] << " "
                 << imuData.magnetometer[2] << "\n";
 
-        fusion.update(imuData, timestamp, true);
+        fusion.update(imuData, timestamp, false);
 
         /*
         float timespent = std::chrono::duration_cast<std::chrono::microseconds>(
